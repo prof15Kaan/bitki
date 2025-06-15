@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Bitki Sağlık Analizi</title>
+  <script src="https://unpkg.com/jsfeat/jsfeat-min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    body { background: #f0fff0; color: #000; text-align: center; font-family: sans-serif; padding: 1rem; transition: all 0.3s ease; }
+    video, canvas { width: 90vw; max-width: 400px; border: 2px solid #28a745; border-radius: 10px; margin-bottom: 10px; }
+    button { padding: 12px 24px; margin: 5px; font-size: 16px; background: #28a745; color: white; border: none; border-radius: 8px; cursor: pointer; }
+    h2, h3 { margin: 8px 0; }
+    #gunluk { background: #fff; border: 1px solid #ccc; padding: 10px; margin-top: 10px; max-height: 200px; overflow-y: auto; text-align: left; }
+    progress { width: 90%; height: 20px; }
+    .dark-mode { background: #121212; color: white; }
+  </style>
+</head>
+<body>
+  <h1>🌿 Bitki Sağlık Testi</h1>
+  <video id="video" autoplay playsinline></video><br />
+  <canvas id="canvas" width="320" height="240" style="display:none;"></canvas>
+  <canvas id="analizCanvas" width="320" height="240"></canvas><br />
+
+  <button onclick="taramayiYap()">📷 Taramayı Başlat</button>
+  <button onclick="fotoKaydet()">🖼️ Fotoğraf Kaydet</button>
+  <button onclick="geceModu()">🌙 Gece Modu</button>
+
+  <h2 id="renkDurumu">🎨 Renk Analizi...</h2>
+  <progress id="yesilBar" value="0" max="1"></progress>
+
+  <h2 id="burusmaDurumu">🧩 Buruşma Analizi...</h2>
+  <progress id="kenarBar" value="0" max="1"></progress>
+
+  <h2>🧠 Yapay Zeka Tavsiyesi</h2>
+  <p id="tavsiye" style="font-style: italic; color: #444;"></p>
+
+  <h3>📚 Günlük Kayıtları</h3>
+  <div id="gunluk"></div>
+
+  <h3>📈 Günlük Analiz Grafiği</h3>
+  <canvas id="chartCanvas" width="300" height="200"></canvas>
+
+  <audio id="uyariSes" src="https://www.soundjay.com/buttons/sounds/beep-07.mp3" preload="auto"></audio>
+
+  <script>
+    const video = document.getElementById("video");
+    const canvas = document.getElementById("canvas");
+    const ctx = canvas.getContext("2d");
+    const analizCanvas = document.getElementById("analizCanvas").getContext("2d");
+
+    const renkDurumu = document.getElementById("renkDurumu");
+    const burusmaDurumu = document.getElementById("burusmaDurumu");
+    const gunluk = document.getElementById("gunluk");
+    const tavsiyeEl = document.getElementById("tavsiye");
+    const yesilBar = document.getElementById("yesilBar");
+    const kenarBar = document.getElementById("kenarBar");
+    const uyariSes = document.getElementById("uyariSes");
+
+    let analizVeri = [];
+
+    navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } })
+      .then((stream) => (video.srcObject = stream))
+      .catch((err) => alert("Kamera açılamadı: " + err));
+
+    function taramayiYap() {
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      analizCanvas.putImageData(imageData, 0, 0);
+
+      let yesilPiksel = 0;
+      let toplam = canvas.width * canvas.height;
+      for (let i = 0; i < imageData.data.length; i += 4) {
+        let r = imageData.data[i], g = imageData.data[i + 1], b = imageData.data[i + 2];
+        if (g > r + 20 && g > b + 20) yesilPiksel++;
+      }
+      const oran = yesilPiksel / toplam;
+      const renkSonuc = oran > 0.6 ? "✅ Sağlıklı" : "⚠️ Hastalık belirtisi";
+      renkDurumu.innerText = `${renkSonuc} (Yeşil oranı: %${Math.round(oran * 100)})`;
+      renkDurumu.style.color = oran > 0.6 ? "green" : "darkorange";
+      yesilBar.value = oran;
+
+      const gray = new jsfeat.matrix_t(canvas.width, canvas.height, jsfeat.U8_t | jsfeat.C1_t);
+      jsfeat.imgproc.grayscale(imageData.data, canvas.width, canvas.height, gray);
+      const edge = new jsfeat.matrix_t(canvas.width, canvas.height, jsfeat.U8_t | jsfeat.C1_t);
+      jsfeat.imgproc.canny(gray, edge, 20, 50);
+      let edgeCount = 0;
+      for (let i = 0; i < edge.data.length; i++) if (edge.data[i] > 0) edgeCount++;
+      const kenarOran = edgeCount / toplam;
+      const burusSonuc = kenarOran > 0.15 ? "⚠️ Buruşmuş" : "✅ Düz";
+      burusmaDurumu.innerText = `${burusSonuc} (Kenar oranı: %${Math.round(kenarOran * 100)})`;
+      burusmaDurumu.style.color = kenarOran > 0.15 ? "darkorange" : "green";
+      kenarBar.value = kenarOran;
+
+      let tavsiye = "";
+      if (oran < 0.6) tavsiye += "Yaprakta renk kaybı var. Fungal hastalık, su eksikliği olabilir. ";
+      if (kenarOran > 0.15) tavsiye += "Yaprak buruşmuş. Sıcaklık stresi veya zararlılar kontrol edilmeli.";
+      if (!tavsiye) tavsiye = "Her şey normal görünüyor. Devam!";
+      tavsiyeEl.innerText = tavsiye;
+
+      if (oran < 0.6 || kenarOran > 0.15) uyariSes.play();
+
+      const tarih = new Date().toLocaleTimeString();
+      const kayit = `${tarih} → ${renkSonuc} | ${burusSonuc}`;
+      let gunlukVeri = JSON.parse(localStorage.getItem("gunluk") || "[]");
+      gunlukVeri.unshift(kayit);
+      localStorage.setItem("gunluk", JSON.stringify(gunlukVeri));
+      analizVeri.unshift({ t: tarih, yesil: oran, kenar: kenarOran });
+      if (analizVeri.length > 10) analizVeri.pop();
+      gunluguGoster();
+      grafiğiCiz();
+    }
+
+    function gunluguGoster() {
+      const veri = JSON.parse(localStorage.getItem("gunluk") || "[]");
+      gunluk.innerHTML = veri.slice(0, 10).map(v => "🟢 " + v).join("<br>");
+    }
+
+    function fotoKaydet() {
+      const url = canvas.toDataURL("image/jpeg");
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "yaprak-testi.jpg";
+      a.click();
+    }
+
+    function geceModu() {
+      document.body.classList.toggle("dark-mode");
+    }
+
+    let chart;
+    function grafiğiCiz() {
+      const ctx = document.getElementById("chartCanvas").getContext("2d");
+      if (chart) chart.destroy();
+      chart = new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels: analizVeri.map(v => v.t).reverse(),
+          datasets: [
+            { label: 'Yeşil Oranı', data: analizVeri.map(v => v.yesil).reverse(), borderColor: 'green', fill: false },
+            { label: 'Kenar Oranı', data: analizVeri.map(v => v.kenar).reverse(), borderColor: 'orange', fill: false }
+          ]
+        },
+        options: {
+          scales: { y: { min: 0, max: 1 } },
+          plugins: { legend: { position: 'bottom' } }
+        }
+      });
+    }
+
+    gunluguGoster();
+    setInterval(taramayiYap, 10000);
+  </script>
+</body>
+</html>
